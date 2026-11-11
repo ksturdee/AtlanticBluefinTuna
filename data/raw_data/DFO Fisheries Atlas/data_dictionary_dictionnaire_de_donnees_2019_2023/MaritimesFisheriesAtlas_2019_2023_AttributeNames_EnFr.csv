@@ -1,0 +1,6 @@
+﻿Layer / Couche,Field / Champ,Field Description,Description du champ
+All Layers / Toutes les couches,hexGridID,unique identification number of hexagon,numéro d'identification unique de l'hexagone
+All Layers / Toutes les couches,roundWeight_kg,"live weight, or round weight (kg)","le poids vif, ou poids brut (kg)"
+All Layers / Toutes les couches,DFO_UnitArea,unit area name derived by Fisheries and Oceans Canada (DFO); unit areas are subdivisions of areas defined by the Northwest Atlantic Fisheries Organization (NAFO),nom de la zone unitaire déterminé par Pêches et Océans Canada (MPO); les zones unitaires sont des sous-sections des zones définies par l’Organisation des pêches de l’Atlantique Nord-Ouest (OPANO)
+All Layers / Toutes les couches,OBJECTID,ArcGIS Field ,Identifiant ArcGIS
+All Layers / Toutes les couches,Shape,ArcGIS Field ,Identifiant ArcGIS

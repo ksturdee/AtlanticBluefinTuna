@@ -1,0 +1,36 @@
+---
+title: "01_dataexploration"
+author: "Kendra"
+date: "2026-11-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r inspect-fisheries-geodatabase}
+library(sf)
+library(dplyr)
+library(here)
+
+# Define the location of the original fisheries geodatabase
+fisheries_geodatabase_path <- here(
+  "data",
+  "raw_data",
+  "DFO Fisheries Atlas",
+  "Maritimes_Fisheries_Atlas_2019_2023.gdb"
+)
+
+# Inspect available spatial layers
+fisheries_available_layers <- st_layers(
+  fisheries_geodatabase_path
+)
+
+# Display layer names and geometry types
+fisheries_available_layers
+```
+
+
+
+
