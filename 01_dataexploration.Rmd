@@ -18,17 +18,23 @@ library(here)
 fisheries_geodatabase_path <- here(
   "data",
   "raw_data",
-  "DFO Fisheries Atlas",
+  "DFO_FisheriesAtlas",
   "Maritimes_Fisheries_Atlas_2019_2023.gdb"
 )
 
 # Inspect available spatial layers
-fisheries_available_layers <- st_layers(
+fisheries_layer_information <- st_layers(
   fisheries_geodatabase_path
 )
 
-# Display layer names and geometry types
-fisheries_available_layers
+# Create a tidy summary
+fisheries_layer_summary <- tibble(
+  layer_name = fisheries_layer_information$name,
+  geometry_type = fisheries_layer_information$geomtype,
+  feature_count = fisheries_layer_information$features
+)
+
+print(fisheries_layer_summary, n = Inf)
 ```
 
 
