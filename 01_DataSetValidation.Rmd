@@ -1,5 +1,5 @@
 ---
-title: "Atlantic Bluefin Tuna Data Exploration"
+title: "Atlantic Bluefin Tuna Dataset validation"
 author: "Kendra Sturdee"
 date: "2026-11-11"
 output:
@@ -19,6 +19,7 @@ library(sf)
 library(dplyr)
 library(here)
 library(tibble)
+library(terra)
 ```
 
 # DFO Fisheries Atlas Exporation
@@ -159,9 +160,72 @@ study_area_extent <- c(
 )
 ```
 
+# GEBCO Exploration
 
+```{r}
+gebco_bathymetry <- rast(
+  here("data", "raw_data", "GEBCO", "gebco_2026_n48.0_s39.0_w-68.0_e-55.0_geotiff.tif")
+)
 
+# Inspect spatial properties
+gebco_spatial_summary <- tibble(
+  dataset = "GEBCO 2026 Bathymetry",
+  coordinate_reference_system = crs(gebco_bathymetry),
+  longitude_min = xmin(gebco_bathymetry),
+  longitude_max = xmax(gebco_bathymetry),
+  latitude_min = ymin(gebco_bathymetry),
+  latitude_max = ymax(gebco_bathymetry),
+  longitude_resolution = res(gebco_bathymetry)[1],
+  latitude_resolution = res(gebco_bathymetry)[2],
+  raster_columns = ncol(gebco_bathymetry),
+  raster_rows = nrow(gebco_bathymetry),
+  missing_cells = global(is.na(gebco_bathymetry), "sum", na.rm = TRUE)[1, 1]
+)
 
+# Display spatial properties
+print(gebco_spatial_summary, width = Inf)
 
+# Inspect elevation and depth values
+gebco_depth_summary <- global(
+  gebco_bathymetry,
+  fun = c("min", "max", "mean"),
+  na.rm = TRUE
+)
+
+print(gebco_depth_summary)
+```
+The GEBCO dataset will work; it's got all four fisheries layers including geographic extents, it's got decent spatial resolution, and has no missing raster cells. 
+
+# Copernicus Data Exploration
+
+```{r inspect-copernicus-data}
+
+# Identify the downloaded NetCDF file
+copernicus_file_path <- list.files(
+  here("data", "raw_data", "Copernicus"),
+  pattern = "\\.nc$",
+  full.names = TRUE
+)
+
+# Inspect available variables
+copernicus_variables <- terra::sds(copernicus_file_path)
+
+copernicus_variables
+```
+
+```{r validate-copernicus-time}
+
+# Extract monthly timestamps from the temperature dataset
+copernicus_temperature <- copernicus_variables["thetao"]
+
+copernicus_time_summary <- tibble(
+  first_observation = min(time(copernicus_temperature)),
+  last_observation = max(time(copernicus_temperature)),
+  number_of_months = nlyr(copernicus_temperature)
+)
+
+print(copernicus_time_summary)
+
+```
 
 
