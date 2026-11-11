@@ -1,19 +1,29 @@
 ---
-title: "01_dataexploration"
-author: "Kendra"
+title: "Atlantic Bluefin Tuna Data Exploration"
+author: "Kendra Sturdee"
 date: "2026-11-11"
-output: html_document
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
 ---
-
+# Setup
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE
+)
 
-```{r inspect-fisheries-geodatabase}
 library(sf)
 library(dplyr)
 library(here)
+library(tibble)
+```
 
+# DFO Fisheries Atlas Exporation
+
+```{r inspect-fisheries-geodatabase}
 # Define the location of the original fisheries geodatabase
 fisheries_geodatabase_path <- here(
   "data",
@@ -27,15 +37,130 @@ fisheries_layer_information <- st_layers(
   fisheries_geodatabase_path
 )
 
-# Create a tidy summary
+# Create a tidy summary of available layers
 fisheries_layer_summary <- tibble(
   layer_name = fisheries_layer_information$name,
-  geometry_type = fisheries_layer_information$geomtype,
+  geometry_type = vapply(
+    fisheries_layer_information$geomtype,
+    paste,
+    collapse = ", ",
+    FUN.VALUE = character(1)
+  ),
   feature_count = fisheries_layer_information$features
 )
 
+# Display all available layers
 print(fisheries_layer_summary, n = Inf)
 ```
+
+## Biological Data Inspection
+Checking attribute names, consistency of data structure, data types, and confirming the records contain spatial features.
+
+```{r inspect-biological-data}
+
+# Identify the layers for species of interest:
+selected_species_layers <- c(
+  bluefin_tuna = "BluefinTuna_Landings_Weight_2019_2023",
+  atlantic_herring = "Herring_Landings_Weight_2019_2023",
+  atlantic_mackerel = "Mackerel_Landings_Weight_2019_2023",
+  squid = "Squid_Landings_Weight_2019_2023"
+)
+
+# Import species datasets
+fisheries_species_data <- lapply(
+  selected_species_layers,
+  function(layer_name) {
+    st_read(
+      dsn = fisheries_geodatabase_path,
+      layer = layer_name,
+      quiet = TRUE
+    )
+  }
+)
+
+# Inspect column names for each species
+species_attribute_summary <- lapply(
+  fisheries_species_data,
+  names
+)
+
+species_attribute_summary
+
+# Preview bluefin tuna records
+head(fisheries_species_data$bluefin_tuna)
+
+```
+
+## Fisheries Data Validation
+
+```{r validate-fisheries-data}
+
+# Check spatial properties and missing values
+fisheries_compatibility_summary <- purrr::imap_dfr(
+  fisheries_species_data,
+  function(species_data, species_name) {
+
+    geographic_extent <- st_bbox(
+      st_transform(species_data, 4326)
+    )
+
+    tibble(
+      species = species_name,
+      feature_count = nrow(species_data),
+      crs_epsg = st_crs(species_data)$epsg,
+      geometry_type = paste(
+        unique(as.character(st_geometry_type(species_data))),
+        collapse = ", "
+      ),
+      invalid_geometries = sum(!st_is_valid(species_data), na.rm = TRUE),
+      missing_attribute_values = sum(
+        is.na(st_drop_geometry(species_data))
+      ),
+      longitude_min = unname(geographic_extent["xmin"]),
+      longitude_max = unname(geographic_extent["xmax"]),
+      latitude_min = unname(geographic_extent["ymin"]),
+      latitude_max = unname(geographic_extent["ymax"])
+    )
+  }
+)
+
+# Display spatial compatibility
+print(fisheries_compatibility_summary, width = Inf)
+
+# Inspect attribute names and data types
+fisheries_attribute_summary <- purrr::imap_dfr(
+  fisheries_species_data,
+  function(species_data, species_name) {
+
+    tibble(
+      species = species_name,
+      attribute_name = names(st_drop_geometry(species_data)),
+      data_type = vapply(
+        st_drop_geometry(species_data),
+        function(attribute_values) {
+          paste(class(attribute_values), collapse = ", ")
+        },
+        character(1)
+      )
+    )
+  }
+)
+
+print(fisheries_attribute_summary, n = Inf)
+```
+Given that this is my core dataset I can define a preliminary bounding box for future environmental datasets.
+
+```{r}
+study_area_extent <- c(
+  longitude_min = -68,
+  longitude_max = -55,
+  latitude_min = 39,
+  latitude_max = 48
+)
+```
+
+
+
 
 
 
