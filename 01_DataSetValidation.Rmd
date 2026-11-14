@@ -64,7 +64,11 @@ selected_species_layers <- c(
   bluefin_tuna = "BluefinTuna_Landings_Weight_2019_2023",
   atlantic_herring = "Herring_Landings_Weight_2019_2023",
   atlantic_mackerel = "Mackerel_Landings_Weight_2019_2023",
-  squid = "Squid_Landings_Weight_2019_2023"
+  squid = "Squid_Landings_Weight_2019_2023",
+  whitehake = "WhiteHake_Landings_Weight_2019_2023",
+  silverhake = "SilverHake_Landings_Weight_2019_2023",
+  redhake = "RedHake_Landings_Weight_2019_2023",
+  cusk = "Cusk_Landings_Weight_2019_2023"
 )
 
 # Import species datasets
@@ -196,7 +200,7 @@ print(gebco_depth_summary)
 ```
 The GEBCO dataset will work; it's got all four fisheries layers including geographic extents, it's got decent spatial resolution, and has no missing raster cells. 
 
-# Copernicus Data Exploration
+# Copernicus Data Validation
 
 ```{r inspect-copernicus-data}
 
