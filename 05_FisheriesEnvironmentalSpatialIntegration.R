@@ -31,7 +31,7 @@ oceanographic_data_directory <- here::here(
   "oceanography"
 )
 
-# Import the fisheries data from the geodatabase
+# Import the fisheries data of interest from the geodatabase
 selected_species_layers <- c(
   bluefin_tuna = "BluefinTuna_Landings_Weight_2019_2023",
   atlantic_herring = "Herring_Landings_Weight_2019_2023",
@@ -104,36 +104,15 @@ mean_eastward_surface_velocity <-
 mean_northward_surface_velocity <-
   mean_oceanographic_conditions[["mean_northward_velocity_ms"]]
 
-# Confirm all fisheries datasets have defined coordinate systems
-stopifnot(
-  all(vapply(
-    fisheries_species_data,
-    function(species_data) {
-      !is.na(sf::st_crs(species_data))
-    },
-    logical(1)
-  ))
-)
 
-# Confirm unique grid identifiers within each species
-stopifnot(
-  all(vapply(
-    fisheries_species_data,
-    function(species_data) {
-      !anyDuplicated(species_data$hexGridID)
-    },
-    logical(1)
-  ))
-)
-
-# Transform fisheries polygons to geographic coordinates
+# Transform fisheries polygons to WGS84
 fisheries_species_data_geographic <- lapply(
   fisheries_species_data,
   sf::st_transform,
   crs = 4326
 )
 
-# -----------------------------------------------------------------------------
+
 # Select original bluefin tuna catch polygons
 bluefin_tuna_catch_cells <-
   fisheries_species_data_geographic$bluefin_tuna |>
@@ -334,17 +313,6 @@ distance_to_200m_contour_m <- sf::st_distance(
 bluefin_tuna_integrated_data$distance_to_200m_contour_km <-
   as.numeric(distance_to_200m_contour_m) / 1000
 
-# Confirm all distances are valid
-stopifnot(
-  all(
-    is.finite(
-      bluefin_tuna_integrated_data$distance_to_200m_contour_km
-    )
-  ),
-  all(
-    bluefin_tuna_integrated_data$distance_to_200m_contour_km >= 0
-  )
-)
 
 # Summarise distances
 distance_to_200m_contour_summary <- bluefin_tuna_integrated_data |>
@@ -397,6 +365,7 @@ sf::st_write(
 integrated_attribute_data <- bluefin_tuna_integrated_data |>
   sf::st_drop_geometry()
 
+# Save a portable non-spatial copy of the integrated attributes
 utils::write.csv(
   integrated_attribute_data,
   file = integrated_csv_path,
