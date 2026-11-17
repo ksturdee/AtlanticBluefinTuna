@@ -3,13 +3,13 @@
 # The purpose of this script is to process monthly ocean temperature and 
 # surface-current data for the Scotian Shelf and adjacent Atlantic waters.
 # Source: Copernicus Marine GLORYS12V1
-# Reporting period: January 2019 - December 2023
-#
+# Reporting period: January 2019 - December 2023. 
+
 # Variables:
 # thetao = Sea water potential temperature (degrees Celsius)
 # uo     = Eastward sea water velocity (m/s)
 # vo     = Northward sea water velocity (m/s)
-#
+
 # This script runs independently of scripts 01, 02 and 03.
 # Original NetCDF data are preserved without modification.
 
@@ -36,9 +36,9 @@ copernicus_oceanographic_data <- terra::sds(
 sea_surface_temperature <- copernicus_oceanographic_data["thetao"]
 eastward_surface_velocity <- copernicus_oceanographic_data["uo"]
 northward_surface_velocity <- copernicus_oceanographic_data["vo"]
-print(copernicus_oceanographic_data)
+print(copernicus_oceanographic_data) # review
 
-# Note these are monthly modelled conditions not direct observations at tuna 
+# Note these are monthly modeled conditions not direct observations at tuna 
 # locations. Also, the DFO fisheries data are aggregated over 2019-2023. We can 
 # examine seasonal oceanographic patterns, but we cannot directly associate a 
 # particular month's conditions with tuna catches without monthly catch records.
@@ -84,10 +84,10 @@ current_speed_colours <- grDevices::colorRampPalette(
   )
 )(100)
 
-# Select January 2019
+# Select January 2019 for an initial inspection
 january_2019_current_speed <- surface_current_speed[[1]]
 
-# Plot current speed
+# Preview january curren speed layer (exploratory)
 terra::plot(
   january_2019_current_speed,
   main = "GLORYS: Surface Current Speed (January 2019)",
@@ -126,7 +126,7 @@ mean_eastward_surface_velocity <- terra::app(
 )
 names(mean_eastward_surface_velocity) <- "mean_eastward_velocity_ms"
 
-# Calculate mean northward surface velocity
+# Calculate five-year mean current speed
 mean_northward_surface_velocity <- terra::app(
   northward_surface_velocity,
   fun = mean,
@@ -134,7 +134,7 @@ mean_northward_surface_velocity <- terra::app(
 )
 names(mean_northward_surface_velocity) <- "mean_northward_velocity_ms"
 
-# Summary of results:
+# Combine the four mean layers for shared summaries and export
 oceanographic_mean_layers <- c(
   mean_surface_temperature,
   mean_surface_current_speed,
@@ -142,6 +142,7 @@ oceanographic_mean_layers <- c(
   mean_northward_surface_velocity
 )
 
+# Summarise five-year mean variables
 oceanographic_summary <- terra::global(
   oceanographic_mean_layers,
   fun = c("min", "max", "mean"),
@@ -184,8 +185,10 @@ terra::plot(
 # Stronger mean currents remain concentrated offshore. The five-year average 
 # produces a smoother pattern than the January 2019 map.
 
-# ------------------------------------------------------------------------------
-# Mean Surface Temperature and Current Streamlines
+
+
+
+# Combine the temperature and directional velocity components
 # Combine the five-year mean oceanographic variables
 mean_oceanographic_layers <- c(
   mean_surface_temperature,
@@ -193,10 +196,10 @@ mean_oceanographic_layers <- c(
   mean_northward_surface_velocity
 )
 
-# Convert raster layers into a tidy data frame
+# Convert raster layers into a data frame
 oceanographic_mapping_data <- terra::as.data.frame(
   mean_oceanographic_layers,
-  xy = TRUE,
+  xy = TRUE, # retains long and lat for plotting
   na.rm = FALSE
 )
 
@@ -217,9 +220,10 @@ oceanographic_mapping_data <- oceanographic_mapping_data |>
       eastward_velocity_ms / cos(latitude * pi / 180)
   )
 
-# Create streamline map
+# Create streamline map of temp and mean circulation
 mean_temperature_streamline_map <- ggplot() +
   
+  # 5-year temperature as the background
   geom_raster(
     data = oceanographic_mapping_data,
     aes(
@@ -229,6 +233,7 @@ mean_temperature_streamline_map <- ggplot() +
     )
   ) +
   
+  # draw streamlines from mean velocity components
   metR::geom_streamline(
     data = oceanographic_mapping_data,
     aes(
@@ -304,7 +309,8 @@ mean_temperature_streamline_map
 # are averaged over five years, many short-lived eddies will be smoothed out. 
 # The streamlines cannot recover those missing features.
 
-# -----------------------------------------------------------------------------
+
+
 
 # Combine mean eastward and northward velocity components
 mean_surface_velocity_components <- c(
@@ -312,7 +318,8 @@ mean_surface_velocity_components <- c(
   mean_northward_surface_velocity
 )
 
-# Define spacing between current vectors
+# Sample every sixth raster cell for current arrows
+# Reducing the number of arrows keeps the map readable
 current_vector_sampling_interval <- 6
 
 # Generate regularly spaced vector locations
