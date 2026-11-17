@@ -1,28 +1,16 @@
 # 03_Bathymetry.R
 
-# Purpose:
-# Prepare bathymetric data for investigating relationships between seafloor 
-# characteristics and reported Atlantic bluefin tuna catch distributions.
-
-# This script runs independently of scripts 01 and 02.
-# Original GEBCO data are preserved without modification.
-
+# Purpose: Process GEBCO 2026 bathymetry for the Atlantic bluefin tuna project.
 # I will analyze depth (m) by determining depths associated with tuna catch cells,
 # seafloor slope (°) by identifying if catches occur near steep underwater terrain,
 # distance to 200 m contour (km) will reveal associations with continental shelf
 # boundaries, and bathymetric variability to characterise local seafloor compelxity.
 
-# This script will import the raw GEBCO GeoTIFF using terra, seperate ocean 
-# bathymetry from land elevations, calculate seafloor slope, identify 200 m depth
-# contour, extract bathymetric variables for bluefin tuna catch hexagons, and 
-# produce descriptive statistics and visualisatiosn. Note: seabed depth is an
-# environmental characteristic of their catch locations NOT the depth that they 
-# are swimming at.
+# Original GEBCO data are preserved without modification.
 
 # Note about the dataset: GEBCO stores elevations relative to sea level. Therefore,
 # Negative values represent locations below sea level, and positive values 
 # represent locations above sea level. Also, GEBCO is in WGS84.
-
 
 # Load required packages
 library(terra)
@@ -42,18 +30,20 @@ gebco_elevation <- terra::rast(
 )
 print(gebco_elevation) # Check raster properties
 
-# Retain only elevations below sea level. Land and cells at or above sea level become NA
+# Retain only elevations below sea level. 
+# Land and cells at or above sea level become NA
 gebco_ocean_elevation <- terra::ifel(
   gebco_elevation < 0,
   gebco_elevation,
   NA
 )
+
 seabed_depth_m <- -gebco_ocean_elevation # convert to positive values (m)
 
 # Assign a descriptive raster layer name
 names(seabed_depth_m) <- "seabed_depth_m"
 
-# Confirm the resulting depth range
+# Confirm the resulting depth range; check min, max and mean depth
 seabed_depth_summary <- terra::global(
   seabed_depth_m,
   fun = c("min", "max", "mean"),
@@ -75,11 +65,12 @@ bathymetry_colours <- colorRampPalette(
   )
 )(100)
 
+# Preview raster
 plot(
   seabed_depth_m,
   main = "GEBCO 2026: Seabed Depth (m)",
   col = bathymetry_colours,
-  colNA = "#D9D9D9"
+  colNA = "#D9D9D9" # grey for missing cells
 )
 
 # Calculate slope using the original GEBCO elevation raster.
@@ -180,14 +171,13 @@ lines(
 # which corresponds to approximately 5 km x 5 km given the GEBCO resolution.
 # Low values = relatively uniform seabed depth. High values = strong local changes.
 
-# Define a 5 x 5 moving window
 bathymetry_focal_window <- matrix(
   1,
   nrow = 5,
   ncol = 5
 )
 
-# Calculate the standard deviation of seabed depth
+# Calculate the standard deviation within each moving window.
 local_depth_variability_m <- terra::focal(
   seabed_depth_m,
   w = bathymetry_focal_window,
@@ -255,7 +245,7 @@ terra::writeRaster(
   overwrite = TRUE
 )
 
-# Seafloor slope raster export
+# Seafloor slope (in degrees) raster export
 terra::writeRaster(
   seafloor_slope_degrees,
   filename = file.path(
@@ -265,7 +255,7 @@ terra::writeRaster(
   overwrite = TRUE
 )
 
-# Local bathymetric variability raster export
+# Local bathymetric variability raster export (m)
 terra::writeRaster(
   local_depth_variability_m,
   filename = file.path(
@@ -286,7 +276,7 @@ terra::writeVector(
   overwrite = TRUE
 )
 
-# At this point I have not reprojected or resampled the rasters.
-
+# The rasters have their original GEBCO grid.
+# No reprojection or resampling is performed in this script.
 
 
