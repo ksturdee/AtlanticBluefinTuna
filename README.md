@@ -67,7 +67,7 @@ over GEBCO bathymetry.
 The two highest-catch spatial clusters were selected using DBSCAN
 clustering of top-decile reporting cells.
 
-![Bluefin tuna catch hotspots](AtlanitcBluefinTuna/figures/Figure1BC_BluefinTuna_HotspotsAndBathymetry.jpeg)
+!(AtlanitcBluefinTuna/figures/Figure1BC_BluefinTuna_HotspotsAndBathymetry.jpeg)
 
 Figure 2: Catch Distribution and Surface Temperature
 
