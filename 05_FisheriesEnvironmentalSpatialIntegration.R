@@ -34,6 +34,13 @@ oceanographic_data_directory <- here::here(
   "oceanography"
 )
 
+# Import bluefin tuna catch data
+bluefin_tuna_catch_data <- sf::st_read(
+  fisheries_geodatabase_path,
+  layer = "BluefinTuna_Landings_Weight_2019_2023",
+  quiet = TRUE
+)
+
 # Import processed seabed depth
 seabed_depth_m <- terra::rast(
   file.path(

@@ -107,6 +107,18 @@ geographic_bbox <- sf::st_bbox(
 
 print(geographic_bbox)
 
+# Crop GEBCO to the map area before aggregation and reprojection
+gebco <- terra::crop(
+  gebco,
+  terra::ext(
+    geographic_bbox[["xmin"]],
+    geographic_bbox[["xmax"]],
+    geographic_bbox[["ymin"]],
+    geographic_bbox[["ymax"]]
+  ),
+  snap = "out"
+)
+
 # Convert negative elevations to positive seabed depths
 gebco_depth <- terra::ifel(gebco < 0, -gebco, NA)
 
