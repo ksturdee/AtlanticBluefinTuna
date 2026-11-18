@@ -12,7 +12,7 @@ The purpose of this script is to validate the three datasets used in the Atlanti
 # Setup
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
-  echo = FALSE,
+  echo = TRUE,
   message = FALSE,
   warning = FALSE
 )
@@ -23,10 +23,12 @@ library(dplyr)
 library(here)
 library(tibble)
 library(terra)
-library(purrr)
 ```
 
 # DFO Fisheries Atlas Validation
+The DFO fisheries atlas contains reported commercial landings aggregated into spatial reporting cells between 2019 and 2023. I just need the bluefin tuna layer for this project.
+
+About the dataset: catch weights represent reported commercial landings, not tuna abundance. Fishing effort is unavailable and unreported cells should not be treated as zero catch.
 
 ```{r inspect-fisheries-geodatabase}
 # Define the location of the original fisheries geodatabase
@@ -59,152 +61,137 @@ fisheries_layer_summary <- tibble(
 print(fisheries_layer_summary, n = Inf)
 ```
 
-## Biological Data Inspection
-Eight fisheries layers were selected in total. A bluefin tuna layer and seven comparison fisheries; their attributes and spatial properties will also be checked before processing.
+## Bluefin tuna data inspection
 
 ```{r inspect-biological-data}
 
-# Identify the fishery layers for species of interest:
-selected_species_layers <- c(
-  bluefin_tuna = "BluefinTuna_Landings_Weight_2019_2023",
-  atlantic_herring = "Herring_Landings_Weight_2019_2023",
-  atlantic_mackerel = "Mackerel_Landings_Weight_2019_2023",
-  squid = "Squid_Landings_Weight_2019_2023",
-  whitehake = "WhiteHake_Landings_Weight_2019_2023",
-  silverhake = "SilverHake_Landings_Weight_2019_2023",
-  redhake = "RedHake_Landings_Weight_2019_2023",
-  cusk = "Cusk_Landings_Weight_2019_2023"
+# Identify the layer
+bluefin_tuna_layer_name <- "BluefinTuna_Landings_Weight_2019_2023"
+
+# Import
+bluefin_tuna_data <- sf::st_read(
+  dsn = fisheries_geodatabase_path,
+  layer = bluefin_tuna_layer_name,
+  quiet = TRUE
 )
 
-# Import selected fishery layers using lapply () for efficiency
-fisheries_species_data <- lapply(
-  selected_species_layers,
-  function(layer_name) {
-    st_read(
-      dsn = fisheries_geodatabase_path,
-      layer = layer_name,
-      quiet = TRUE
-    )
-  }
-)
-
-# Inspect column names for each species
-species_attribute_summary <- lapply(
-  fisheries_species_data,
-  names
-)
-
-species_attribute_summary # This will print the column names for each species layer, allowing me to verify that the necessary attributes are present for further analysis.
+# Inspect attribute names
+print(names(bluefin_tuna_data))
 
 # Preview bluefin tuna records
-head(fisheries_species_data$bluefin_tuna)
+head(bluefin_tuna_data)
 
 ```
+Attributes 'hexGridID' and 'roundWeight_kg' useful for analysis.
+The former is an identifer for each fisheries reporting cell, and the later describes commerical catch weight in kg. 
 
-The later scripts use 'hexGridID' to match reporting cells and `roundWeight_kg` to analyse reported catch weight.
 
 ```{r}
-# Check fields required for fisheries processing
+# Define required attributes
 required_fisheries_fields <- c(
   "hexGridID",
   "roundWeight_kg"
 )
-
-fisheries_field_validation <- purrr::imap_dfr(
-  fisheries_species_data,
-  function(species_data, species_name) {
-
-    attributes <- sf::st_drop_geometry(species_data)
-
-    tibble::tibble(
-      species = species_name,
-      
-      missing_fields = paste(
-        setdiff(required_fisheries_fields, names(attributes)),
-        collapse = ", "
-      ),
-
-      missing_grid_ids = if ("hexGridID" %in% names(attributes)) {
-        sum(is.na(attributes$hexGridID))
-      } else {
-        NA_integer_
-      },
-# Return NA if the field does not exist
-      missing_catch_weights = if ("roundWeight_kg" %in% names(attributes)) {
-        sum(is.na(attributes$roundWeight_kg))
-      } else {
-        NA_integer_
-      }
-    )
-  }
+# Identify missing required fields
+missing_required_fields <- setdiff(
+  required_fisheries_fields,
+  names(bluefin_tuna_data)
 )
 
-print(fisheries_field_validation, n = Inf)
+# Extract non-spatial attributes
+bluefin_tuna_attributes <- sf::st_drop_geometry(
+  bluefin_tuna_data
+)
+
+# Summarise required field completeness
+fisheries_field_validation <- tibble::tibble(
+  dataset = "Atlantic bluefin tuna",
+  total_records = nrow(bluefin_tuna_data),
+
+  missing_grid_ids = sum(
+    is.na(bluefin_tuna_attributes$hexGridID)
+  ),
+
+  missing_catch_weights = sum(
+    is.na(bluefin_tuna_attributes$roundWeight_kg)
+  ),
+
+  positive_catch_records = sum(
+    is.finite(bluefin_tuna_attributes$roundWeight_kg) &
+      bluefin_tuna_attributes$roundWeight_kg > 0
+  )
+)
+
+print(fisheries_field_validation, width = Inf)
+
+# Check if reporting-cell identifiers are duplicated
+duplicate_grid_ids <- sum(
+  duplicated(bluefin_tuna_attributes$hexGridID) &
+    !is.na(bluefin_tuna_attributes$hexGridID)
+)
 ```
 
 The fisheries layers are checked for coorindate systems/geometry validtity and missing values / geograpic extent. 
 
-## Fisheries Data Validation
+## Fisheries Spatial Validation
 
 ```{r validate-fisheries-data}
-
-# Check spatial properties and missing values
-fisheries_compatibility_summary <- purrr::imap_dfr(
-  fisheries_species_data,
-  function(species_data, species_name) {
-
-    geographic_extent <- st_bbox(
-      st_transform(species_data, 4326) # Transform coordinates to WGS84 for consistent geographic extent calculation (does not change original layer CRS)
+bluefin_tuna_geographic <- sf::st_transform(
+  bluefin_tuna_data,
+  4326 # Transform coordinates to WGS84 for consistent geographic extent calculation (does not change original layer CRS)
     )
 
-    tibble(
-      species = species_name,
-      feature_count = nrow(species_data),
-      crs_epsg = st_crs(species_data)$epsg,
-      geometry_type = paste(
-        unique(as.character(st_geometry_type(species_data))),
-        collapse = ", "
-      ),
-      invalid_geometries = sum(!st_is_valid(species_data), na.rm = TRUE),
-      missing_attribute_values = sum(
-        is.na(st_drop_geometry(species_data))
-      ),
-      # Record the geographic extent in decimal degrees (WGS84)
-      longitude_min = unname(geographic_extent["xmin"]),
-      longitude_max = unname(geographic_extent["xmax"]),
-      latitude_min = unname(geographic_extent["ymin"]),
-      latitude_max = unname(geographic_extent["ymax"])
-    )
-  }
+    # Calculate geographic extent
+bluefin_tuna_extent <- sf::st_bbox(
+  bluefin_tuna_geographic
 )
 
-# Display spatial compatibility
-print(fisheries_compatibility_summary, width = Inf)
+# Summarise spatial properties
+fisheries_spatial_summary <- tibble(
+  dataset = "Atlantic bluefin tuna",
+
+  feature_count = nrow(bluefin_tuna_data),
+
+  crs_epsg = sf::st_crs(bluefin_tuna_data)$epsg,
+
+  geometry_type = paste(
+    unique(as.character(
+      sf::st_geometry_type(bluefin_tuna_data)
+    )),
+    collapse = ", "
+  ),
+
+  invalid_geometries = sum(
+    !sf::st_is_valid(bluefin_tuna_data),
+    na.rm = TRUE
+  ),
+
+  longitude_min = unname(bluefin_tuna_extent["xmin"]),
+  longitude_max = unname(bluefin_tuna_extent["xmax"]),
+  latitude_min = unname(bluefin_tuna_extent["ymin"]),
+  latitude_max = unname(bluefin_tuna_extent["ymax"])
+)
+
+print(fisheries_spatial_summary, width = Inf)
 
 # Inspect attribute names and data types
-fisheries_attribute_summary <- purrr::imap_dfr(
-  fisheries_species_data,
-  function(species_data, species_name) {
+fisheries_attribute_summary <- tibble(
+  attribute_name = names(bluefin_tuna_attributes),
 
-    tibble(
-      species = species_name,
-      attribute_name = names(st_drop_geometry(species_data)),
-      data_type = vapply(
-        st_drop_geometry(species_data),
-        function(attribute_values) {
-          paste(class(attribute_values), collapse = ", ")
-        },
-        character(1)
-      )
-    )
-  }
+  data_type = vapply(
+    bluefin_tuna_attributes,
+    function(attribute_values) {
+      paste(class(attribute_values), collapse = ", ")
+    },
+    character(1)
+  )
 )
 
 print(fisheries_attribute_summary, n = Inf)
 ```
-Based on the combined fisheries extents, the environmental-data acquisition area was rounded to 68-55°W and 39-48°N. This extent covers the core fisheries reporting region while keeping raster and NetCDF downloads manageable.
+The environmental datasets were acquired for a study area extending approximately from 68°W to 55°W and 39°N to 48°N given extent of the DFOfisheriesAtlas data to keep downloads manageable.  
 
-```{r}
+```{r define-study-area}
 # Record the study area extent for future reference which can be used to aquire targetd enviromental data for the fisheries reporting cells.
 study_area_extent <- c(
   longitude_min = -68,
@@ -215,8 +202,8 @@ study_area_extent <- c(
 print(study_area_extent)
 ```
 
-# GEBCO Exploration
-GEBCO 2026 bathymetry was downloaded as a GeoTIFF raster for the study area extent. The raster is inspected for spatial properties and elevation/depth values. The data gives seabed elevation which can be used to calculate depth, slope etc. 
+# GEBCO Bathymetry dataset exploration
+GEBCO 2026 bathymetry was downloaded as a GeoTIFF raster for the study area extent. GEBCO provides seabed elevation relative to sea level. Negative values represent locations below sea level. This will be used for mapping. 
 
 ```{r}
 # Load original raster
@@ -242,20 +229,20 @@ gebco_spatial_summary <- tibble(
 # Display spatial properties
 print(gebco_spatial_summary, width = Inf)
 
-# Inspect elevation and depth values
-gebco_depth_summary <- global(
+# Inspect elevation values
+gebco_elevation_summary <- terra::global(
   gebco_bathymetry,
   fun = c("min", "max", "mean"),
   na.rm = TRUE
 )
 
-print(gebco_depth_summary)
+print(gebco_elevation_summary)
 ```
-The GEBCO raster covers the preliminary fisheries study area at 15-arc-second resolution and contains no missing raster cells. It is suitable for deriving bathymetric variables for the fisheries reporting cells. 
+The GEBCO raster covers the preliminary study area at 15-arc-second resolution and contains no missing raster cells. It is suitable for deriving bathymetric variables. 
 
 # Copernicus Data Validation
 
-This dataset provides montlhy oceanographic data which can be used to examine sea surface temperature and currents from 2019-2023. The data is downloaded as a NetCDF file and inspected here. 
+This dataset provides montlhy oceanographic data which can be used to examine sea surface temperature and currents from 2019-2023. For this project, I am only concerned with sea surface temperature. The data is downloaded as a NetCDF file and inspected here. Monthly temperature data from January 2019 to December 2023 will be averaged to create a five-year temperature surface layer that can be mapped.
 
 ```{r inspect-copernicus-data}
 
@@ -265,12 +252,12 @@ copernicus_file_path <- list.files(
   pattern = "\\.nc$",
   full.names = TRUE
 )
-stopifnot(length(copernicus_file_path) == 1)
+
 
 # Inspect available variables
 copernicus_variables <- terra::sds(copernicus_file_path)
 
-copernicus_variables
+print(copernicus_variables)
 ```
 
 ## Temperature time coverage
@@ -288,7 +275,30 @@ copernicus_time_summary <- tibble(
 
 print(copernicus_time_summary)
 
+# Confirm it has spatial coverage:
+copernicus_spatial_summary <- tibble(
+  dataset = "Copernicus GLORYS Temperature",
+
+  coordinate_reference_system = terra::crs(
+    copernicus_temperature
+  ),
+
+  longitude_min = terra::xmin(copernicus_temperature),
+  longitude_max = terra::xmax(copernicus_temperature),
+
+  latitude_min = terra::ymin(copernicus_temperature),
+  latitude_max = terra::ymax(copernicus_temperature),
+
+  longitude_resolution = terra::res(copernicus_temperature)[1],
+  latitude_resolution = terra::res(copernicus_temperature)[2],
+
+  raster_columns = terra::ncol(copernicus_temperature),
+  raster_rows = terra::nrow(copernicus_temperature)
+)
+
+
+print(copernicus_spatial_summary, width = Inf)
 ```
 # Validation Outcome
-All datasets were checked and deemed fit for use and comparable for our goal. They have sufficient coverage and spatial extent. The next scripts will process each dataset independently BEFORE integrating environmental variables with the bluefin tuna reporting cells. 
+All datasets were checked and deemed fit for use and comparable for our goal. They have sufficient coverage and spatial extent.
 
