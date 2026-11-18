@@ -2,8 +2,11 @@
 
 # The purpose of this script is to bring together the three datasets from
 # scripts 02, 03 and 04. The DFO fisheries hexagons will remain the primary
-# spatial units. Note: Catch weight is not a direct measure of fish abundance, 
-# and unreported cells must not be interpreted as zero catch in this analysis.
+# spatial units.
+
+# Mean seabed depth and mean surface temperature will be calculated
+# within each bluefin tuna reporting cell. As well, I will determine the shortest 
+# distance from each catch cell to the 200m bathymetric contour.
 
 # This script will run independently of the others. 
 
@@ -31,49 +34,16 @@ oceanographic_data_directory <- here::here(
   "oceanography"
 )
 
-# Import the fisheries data of interest from the geodatabase
-selected_species_layers <- c(
-  bluefin_tuna = "BluefinTuna_Landings_Weight_2019_2023",
-  atlantic_herring = "Herring_Landings_Weight_2019_2023",
-  atlantic_mackerel = "Mackerel_Landings_Weight_2019_2023",
-  squid = "Squid_Landings_Weight_2019_2023",
-  white_hake = "WhiteHake_Landings_Weight_2019_2023",
-  silver_hake = "SilverHake_Landings_Weight_2019_2023",
-  red_hake = "RedHake_Landings_Weight_2019_2023",
-  cusk = "Cusk_Landings_Weight_2019_2023"
-)
-
-fisheries_species_data <- lapply(
-  selected_species_layers,
-  function(layer_name) {
-    sf::st_read(
-      fisheries_geodatabase_path,
-      layer = layer_name,
-      quiet = TRUE
-    )
-  }
-)
-
-# Import processed bathymetric layers
+# Import processed seabed depth
 seabed_depth_m <- terra::rast(
   file.path(
     bathymetry_data_directory,
     "seabed_depth_m.tif"
   )
 )
-seafloor_slope_degrees <- terra::rast(
-  file.path(
-    bathymetry_data_directory,
-    "seafloor_slope_degrees.tif"
-  )
-)
-local_depth_variability_m <- terra::rast(
-  file.path(
-    bathymetry_data_directory,
-    "local_depth_variability_m.tif"
-  )
-)
-names(local_depth_variability_m) <- "local_depth_variability_m"
+
+# Give the extracted values a clear final column name
+names(seabed_depth_m) <- "mean_seabed_depth_m"
 
 depth_contour_200m <- sf::st_read(
   file.path(
@@ -83,202 +53,65 @@ depth_contour_200m <- sf::st_read(
   quiet = TRUE
 )
 
-# Import processed oceanographic (Copernicus) layers
-mean_oceanographic_conditions <- terra::rast(
+# Import processed mean surface temperature
+mean_surface_temperature <- terra::rast(
   file.path(
     oceanographic_data_directory,
-    "glorys_mean_oceanographic_conditions_2019_2023.tif"
+    "glorys_mean_surface_temperature_2019_2023.tif"
   )
 )
 
-# Extract individual environmental variables
-mean_surface_temperature <-
-  mean_oceanographic_conditions[["mean_surface_temperature_c"]]
+# Confirm the final extracted column name
+names(mean_surface_temperature) <- "mean_surface_temperature_c"
 
-mean_surface_current_speed <-
-  mean_oceanographic_conditions[["mean_current_speed_ms"]]
-
-mean_eastward_surface_velocity <-
-  mean_oceanographic_conditions[["mean_eastward_velocity_ms"]]
-
-mean_northward_surface_velocity <-
-  mean_oceanographic_conditions[["mean_northward_velocity_ms"]]
-
-
-# Transform fisheries polygons to WGS84
-fisheries_species_data_geographic <- lapply(
-  fisheries_species_data,
-  sf::st_transform,
-  crs = 4326
-)
-
-
-# Select original bluefin tuna catch polygons
-bluefin_tuna_catch_cells <-
-  fisheries_species_data_geographic$bluefin_tuna |>
+# Transform the fisheries polygons to the geographic CRS used by the
+# environmental rasters.
+bluefin_tuna_catch_cells <- bluefin_tuna_catch_data |>
+  sf::st_transform(4326) |>
   dplyr::select(
     hexGridID,
     roundWeight_kg
   )
 
-#  Combine bathymetric variables
-bathymetric_environmental_layers <- c(
-  seabed_depth_m,
-  seafloor_slope_degrees,
-  local_depth_variability_m
-)
-# Confirm descriptive layer names
-names(bathymetric_environmental_layers) <- c(
-  "mean_seabed_depth_m",
-  "mean_seafloor_slope_degrees",
-  "mean_local_depth_variability_m"
-)
-
-# Extract bathymetric conditions
+# Extract mean seabed depth. Calculate mean seabed depth across each reporting-cell
 bluefin_tuna_bathymetry_values <- terra::extract(
-  bathymetric_environmental_layers,
+  seabed_depth_m,
+  terra::vect(bluefin_tuna_catch_cells),
+  fun = mean,
+  exact = TRUE,
+  na.rm = TRUE
+)
+# Remove the extraction row identifier
+bluefin_tuna_bathymetry_values <-
+  bluefin_tuna_bathymetry_values |>
+  dplyr::select(-ID)
+
+# Extract mean surface temp
+# Calculate mean five year surface temp across each cell using the processed GLORYS
+# raster
+bluefin_tuna_temperature_values <- terra::extract(
+  mean_surface_temperature,
   terra::vect(bluefin_tuna_catch_cells),
   fun = mean,
   exact = TRUE,
   na.rm = TRUE
 )
 
-# Remove extraction row identifier
-bluefin_tuna_bathymetry_values <- bluefin_tuna_bathymetry_values |>
+# Remove the extraction row identifier
+bluefin_tuna_temperature_values <-
+  bluefin_tuna_temperature_values |>
   dplyr::select(-ID)
 
-# Extract oceanographic conditions
-bluefin_tuna_oceanographic_values <- terra::extract(
-  mean_oceanographic_conditions,
-  terra::vect(bluefin_tuna_catch_cells),
-  fun = mean,
-  exact = TRUE,
-  na.rm = TRUE
-)
-
-# Remove extraction row identifier
-bluefin_tuna_oceanographic_values <- bluefin_tuna_oceanographic_values |>
-  dplyr::select(-ID)
-
-#  Combine catch and environmental attributes
-bluefin_tuna_environmental_data <- bluefin_tuna_catch_cells |>
+# Combine catch and environmental attributes
+bluefin_tuna_integrated_data <- bluefin_tuna_catch_cells |>
   dplyr::bind_cols(
     bluefin_tuna_bathymetry_values,
-    bluefin_tuna_oceanographic_values
+    bluefin_tuna_temperature_values
   )
-print(names(bluefin_tuna_environmental_data))
-
-# Integrate potential prey catch layers usign hexGridID
-
-potential_forage_species <- c(
-  "atlantic_herring",
-  "atlantic_mackerel",
-  "squid",
-  "white_hake",
-  "silver_hake",
-  "red_hake",
-  "cusk"
-)
-
-potential_forage_catch_columns <- c(
-  atlantic_herring = "herring_catch_kg",
-  atlantic_mackerel = "mackerel_catch_kg",
-  squid = "squid_catch_kg",
-  white_hake = "white_hake_catch_kg",
-  silver_hake = "silver_hake_catch_kg",
-  red_hake = "red_hake_catch_kg",
-  cusk = "cusk_catch_kg"
-)
-
-# Prepare catch attributes for each comparison species
-potential_forage_catch_data <- lapply(
-  potential_forage_species,
-  function(species_name) {
-    
-    comparison_catch_data <- fisheries_species_data[[species_name]] |>
-      sf::st_drop_geometry() |>
-      dplyr::select(
-        hexGridID,
-        roundWeight_kg
-      )
-    
-    names(comparison_catch_data)[
-      names(comparison_catch_data) == "roundWeight_kg"
-    ] <- potential_forage_catch_columns[[species_name]]
-    
-    comparison_catch_data
-  }
-)
-
-names(potential_forage_catch_data) <- potential_forage_species
-
-# Start with the environmental bluefin dataset
-
-bluefin_tuna_integrated_data <- bluefin_tuna_environmental_data
-# Add comparison-species catch values by shared fisheries grid ID
-for (species_name in potential_forage_species) {
-  
-  bluefin_tuna_integrated_data <- dplyr::left_join(
-    bluefin_tuna_integrated_data,
-    potential_forage_catch_data[[species_name]],
-    by = "hexGridID"
-  )
-}
-# Summarise exact grid-cell overlap
-potential_forage_overlap_summary <- tibble::tibble(
-  species = potential_forage_species,
-  
-  bluefin_cells_with_matching_catch = vapply(
-    potential_forage_species,
-    function(species_name) {
-      
-      catch_column <-
-        potential_forage_catch_columns[[species_name]]
-      
-      sum(
-        !is.na(
-          bluefin_tuna_integrated_data[[catch_column]]
-        )
-      )
-    },
-    integer(1)
-  ),
-  
-  bluefin_cells_without_matching_catch = vapply(
-    potential_forage_species,
-    function(species_name) {
-      
-      catch_column <-
-        potential_forage_catch_columns[[species_name]]
-      
-      sum(
-        is.na(
-          bluefin_tuna_integrated_data[[catch_column]]
-        )
-      )
-    },
-    integer(1)
-  )
-) |>
-  dplyr::mutate(
-    overlap_percentage =
-      100 *
-      bluefin_cells_with_matching_catch /
-      nrow(bluefin_tuna_integrated_data)
-  )
-
-print(potential_forage_overlap_summary)
 
 # Confirm final attribute names
 print(names(bluefin_tuna_integrated_data))
 
-print(
-  potential_forage_overlap_summary,
-  width = Inf
-)
-# Overlap is not 100% for any species, which is expected given the different 
-# spatial distributions of the species and the fact that not all species are 
-# caught in every hexagon.
 
 # Distance to the 200 m contour; calculate the shortest distance (m) from the 
 # hexagon boundary to the contour.
@@ -340,6 +173,7 @@ integrated_data_directory <- here::here(
   "processed_data",
   "spatial_integration"
 )
+
 
 # Define output file paths
 integrated_geopackage_path <- file.path(

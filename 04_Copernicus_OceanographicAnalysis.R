@@ -43,6 +43,15 @@ mean_surface_temperature <- terra::app(
 )
 names(mean_surface_temperature) <- "mean_surface_temperature_c"
 
+# Summarise five-year mean surface temperature
+mean_surface_temperature_summary <- terra::global(
+  mean_surface_temperature,
+  fun = c("min", "max", "mean"),
+  na.rm = TRUE
+)
+
+print(mean_surface_temperature_summary)
+
 # Five-Year Mean Oceanographic Conditions
 # Temperature colour palette: Cool blue to warm red
 temperature_colours <- grDevices::colorRampPalette(
