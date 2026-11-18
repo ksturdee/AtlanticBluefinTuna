@@ -332,3 +332,15 @@ figure_two_spatial_temperature <- ggplot() +
 
 # Preview only
 print(figure_two_spatial_temperature)
+
+# Export final Figure 2 to the figures folder
+ggplot2::ggsave(
+  filename = here::here("figures", "Figure2_CatchTemperature.png"),
+  plot = figure_two_spatial_temperature,
+  width = 12,
+  height = 8,
+  units = "in",
+  dpi = 300,
+  bg = "white"
+)
+
