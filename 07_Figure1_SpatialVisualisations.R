@@ -1,19 +1,27 @@
 # 07_BluefinTuna_FinalSpatialVisualisations.R
 
-
 # Purpose:
-# Create final spatial figures for the Atlantic bluefin tuna project.
+# Create the final catch distribution and bathymetry figure for the
+# Atlantic bluefin tuna project.
 
-# Figure 1A:
-# Regional catch distribution over GEBCO bathymetry.
+# Figure 1A: figure_one_regional_panel
+# Regional reported catch distribution over GEBCO bathymetry.
 
-# Figure 1BC:
-# Two objectively selected catch hotspots over detailed bathymetry.
+# Figure 1BC: figure_one_hotspot_panels
+# Two objectively selected high-catch clusters over detailed bathymetry.
+
+# High-catch cells are defined using the 90th percentile of reported catch
+# weight. DBSCAN groups neighbouring high-catch cell centroids within 30 km,
+# with at least four cells required to form a cluster.
+
+# The two clusters with the highest total reported catch are selected for
+# the detailed inset maps. These are descriptive spatial clusters, not
+# statistically significant hotspot tests.
 
 # Before running:
-# Run Scripts 02-06 so the required processed objects are available.
-
-# This script previews figures only. It does not export files.
+# Run Scripts 02 and 03 so the required fisheries, land, map extent and
+# bathymetry objects are available. This script previews figures only. 
+# It does not export files.
 
 
 # Load packages
@@ -23,7 +31,7 @@ library(dplyr)     # Filtering and catch summaries
 library(ggplot2)   # Custom bathymetry legends
 library(here)      # Project-relative file paths
 library(tmap)      # Spatial maps
-library(dbscan)    # Hotspot clustering
+library(dbscan)    # High-catch spatial clustering
 library(cowplot)   # Final figure composition
 library(grid)      # Figure grobs and units
 library(gridExtra) # Panel headings and layouts
@@ -32,45 +40,13 @@ library(scales)    # Legend number formatting
 tmap::tmap_mode("plot")
 
 
+# Identify descriptive spatial clusters among the top-decile catch cells
 
-# Check that the objects created by Scripts 02 and 03 are available
+# DBSCAN groups top-decile reporting-cell centroids located within 30 km.
+# A minimum of four cells is required to distinguish spatial clusters from
+# isolated high-catch cells. These parameters define descriptive catch
+# concentrations and do not represent a statistical hotspot significance test.
 
-# ============================================================
-# 07_BluefinTuna_FinalSpatialVisualisations.R
-# ============================================================
-
-# Purpose:
-# Create final spatial figures for the Atlantic bluefin tuna project.
-#
-# Figure 1A:
-# Regional catch distribution over GEBCO bathymetry.
-#
-# Figure 1BC:
-# Two objectively selected catch hotspots over detailed bathymetry.
-#
-# Before running:
-# Run Scripts 02-06 so the required processed objects are available.
-#
-# This script previews figures only. It does not export files.
-
-
-# Load packages
-library(sf)        # Vector geometry and spatial transformations
-library(terra)     # Bathymetry raster processing
-library(dplyr)     # Filtering and catch summaries
-library(ggplot2)   # Custom bathymetry legends
-library(here)      # Project-relative file paths
-library(tmap)      # Spatial maps
-library(dbscan)    # Hotspot clustering
-library(cowplot)   # Final figure composition
-library(grid)      # Figure grobs and units
-library(gridExtra) # Panel headings and layouts
-library(scales)    # Legend number formatting
-
-tmap::tmap_mode("plot")
-
-
-#  Select the highest-catch cells
 bluefin_tuna_hotspot_candidates <-
   fisheries_species_data_projected$bluefin_tuna |>
   dplyr::filter(
@@ -92,8 +68,6 @@ bluefin_tuna_top_decile_cells <-
     roundWeight_kg >= hotspot_catch_threshold_kg
   )
 
-
-# Identify spatial catch clusters
 
 bluefin_tuna_top_decile_centroids <-
   sf::st_centroid(
@@ -148,16 +122,33 @@ hotspot_two_cells <- clustered_hotspot_cells |>
   dplyr::filter(
     hotspot_cluster == selected_hotspot_clusters[2]
   )
-
+# Preserve the ranking so Panel B is always the cluster with the highest
+# total reported catch and Panel C is the second-highest.
 selected_hotspot_summary <- hotspot_cluster_summary |>
   dplyr::filter(
     hotspot_cluster %in% selected_hotspot_clusters
+  ) |>
+  dplyr::arrange(
+    match(
+      hotspot_cluster,
+      selected_hotspot_clusters
+    )
   ) |>
   dplyr::mutate(
     inset_panel = c("B", "C")
   )
 
 print(selected_hotspot_summary)
+
+# Summarise the two selected high-catch clusters together
+selected_hotspots_combined_summary <- selected_hotspot_summary |>
+  dplyr::summarise(
+    selected_clusters = dplyr::n(),
+    top_decile_cells = sum(catch_cells),
+    combined_reported_catch_kg = sum(total_catch_kg)
+  )
+
+print(selected_hotspots_combined_summary)
 
 
 # Create square hotspot extents
@@ -223,7 +214,7 @@ presentation_catch_breaks_kg <- c(
   100,
   1000,
   10000,
-  50000
+  Inf
 )
 
 presentation_catch_labels <- c(
@@ -231,7 +222,7 @@ presentation_catch_labels <- c(
   "10-100",
   "100-1k",
   "1k-10k",
-  "10k-50k"
+  "10k+"
 )
 
 presentation_catch_colours <- grDevices::hcl.colors(
@@ -335,15 +326,27 @@ regional_map_aspect_ratio <- unname(
 
 # Import expanded regional GEBCO
 
-regional_gebco <- terra::rast(
-  here::here(
-    "data",
-    "raw_data",
-    "GEBCO",
-    "GEBCO_2026_RegionalCartography_79W_47W_33N_53N.tif"
-  )
+# Define the expanded regional GEBCO file used for Panel A
+regional_gebco_path <- here::here(
+  "data",
+  "raw_data",
+  "GEBCO",
+  "GEBCO_2026_RegionalCartography_79W_47W_33N_53N.tif"
 )
 
+
+# Import expanded regional GEBCO
+regional_gebco_path <- here::here(
+  "data",
+  "raw_data",
+  "GEBCO",
+  "GEBCO_2026_RegionalCartography_79W_47W_33N_53N.tif"
+)
+
+# Load regional bathymetry
+regional_gebco <- terra::rast(
+  regional_gebco_path
+)
 # Convert negative elevations to positive seabed depth.
 regional_seabed_depth_m <- terra::ifel(
   regional_gebco < 0,
@@ -588,7 +591,7 @@ regional_map_grob <- tmap::tmap_grob(
   regional_bluefin_tuna_bathymetry_map
 )
 
-regional_map_compact <- cowplot::ggdraw() +
+figure_one_regional_panel <- cowplot::ggdraw() +
 
   cowplot::draw_grob(
     regional_map_grob,
@@ -608,9 +611,7 @@ regional_map_compact <- cowplot::ggdraw() +
 
 
 # Preview Figure 1A
-print(
-  regional_map_compact
-)
+print(figure_one_regional_panel)
 
 
 # FIGURE 1BC
@@ -1050,7 +1051,7 @@ hotspot_depth_legend_vertical <- cowplot::get_legend(
 
 # Approved B/C composition
 
-hotspot_bc_vertical_legend_test <- cowplot::plot_grid(
+figure_one_hotspot_panels <- cowplot::plot_grid(
 
   hotspot_maps_pair,
 
@@ -1073,9 +1074,7 @@ hotspot_bc_vertical_legend_test <- cowplot::plot_grid(
 
 
 # Preview Figure 1BC
-print(
-  hotspot_bc_vertical_legend_test
-)
+print(figure_one_hotspot_panels)
 
 
 # Cartographic diagnostic
