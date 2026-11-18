@@ -1110,3 +1110,34 @@ centroid_land_summary <- tibble::tibble(
 print(
   centroid_land_summary
 )
+
+
+
+
+# Export Figure 1A: regional catch distribution and bathymetry
+ggplot2::ggsave(
+  filename = here::here(
+    "figures",
+    "Figure1A_RegionalCatchBathymetry.png"
+  ),
+  plot = figure_one_regional_panel,
+  width = 12,
+  height = 7,
+  units = "in",
+  dpi = 300,
+  bg = "white"
+)
+
+# Export Figure 1BC: high-catch clusters and bathymetry
+ggplot2::ggsave(
+  filename = here::here(
+    "figures",
+    "Figure1BC_HighCatchClusters.png"
+  ),
+  plot = figure_one_hotspot_panels,
+  width = 13,
+  height = 7,
+  units = "in",
+  dpi = 300,
+  bg = "white"
+)
