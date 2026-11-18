@@ -56,26 +56,23 @@ bluefin tuna catches.
   against local bathymetry.
 
 ## Final Figures
-
-Figure 1: Reported Catch Distribution and Bathymetry
-
 Regional distribution of reported Atlantic bluefin tuna catches
 over GEBCO bathymetry.
 
-![Regional bluefin tuna catch distribution](AtlanitcBluefinTuna/figures/Figure1A_RegionalBluefinTuna_CatchAndBathymetry.jpeg)
+<img width="1366" height="1008" alt="Figure1A_RegionalBluefinTuna_CatchAndBathymetry" src="https://github.com/user-attachments/assets/b0d0c74e-a0cc-4ff2-80f8-b2e4dee4c428" />
+Figure 1A: Reported Catch Distribution and Bathymetry
 
-The two highest-catch spatial clusters were selected using DBSCAN
+<img width="1726" height="768" alt="Figure1BC_BluefinTuna_HotspotsAndBathymetry" src="https://github.com/user-attachments/assets/1ff0e2d4-9ffb-420e-8b3f-e3e8f53cc493" />
+Figure 1BC: The two highest-catch spatial clusters were selected using DBSCAN
 clustering of top-decile reporting cells.
-
-!(AtlanitcBluefinTuna/figures/Figure1BC_BluefinTuna_HotspotsAndBathymetry.jpeg)
-
-Figure 2: Catch Distribution and Surface Temperature
 
 Reported bluefin tuna catches over five-year mean sea surface
 temperature (2019–2023), with labelled isotherms and subtle
 bathymetric shading.
 
-![Bluefin tuna catches and surface temperature](AtlanitcBluefinTuna/figures/Figure2_CatchTemperature.png)
+<img width="3600" height="2400" alt="Figure2_CatchTemperature" src="https://github.com/user-attachments/assets/959eb9c7-9cc5-4ba3-9200-160206c33578" />
+Figure 2: Catch Distribution and Surface Temperature
+
 ## Reproducibility
 
 The numbered R scripts document the workflow from dataset validation
