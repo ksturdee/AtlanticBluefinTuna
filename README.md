@@ -75,11 +75,11 @@ The analysis identified pronounced spatial variation in reported commercial catc
 
 **Figures 1B–C. High-catch clusters and bathymetry**  
 The two highest-catch clusters were selected from top-decile reporting cells using DBSCAN.  
-![Hotspots and bathymetry](Figure1BC_HighCatchClusters.png)
+![High-catch spatial clusters over bathymetry](figures/Figure1BC_HighCatchClusters.png)
 
 **Figure 2. Catch distribution and temperature**  
 Reported catches over the 2019–2023 mean temperature field, with labelled isotherms and bathymetric shading.  
-![Reported catch distribution and mean temperature](figures/Figure2_CatchTemperature)
+![Reported catch distribution and mean temperature](figures/Figure2_CatchTemperature.png)
 
 ## Reproducibility
 
