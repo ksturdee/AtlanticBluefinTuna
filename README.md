@@ -1,40 +1,54 @@
 # Atlantic Bluefin Tuna: Spatial Patterns in Reported Catch
-
-Exploring the spatial distribution of reported Atlantic bluefin tuna catches
-in Atlantic Canada and their associations with seabed depth and sea surface
-temperature using R.
+In this project, I explore the spatial distribution of reported Atlantic bluefin 
+tuna catches in Atlantic Canada and their associations with seabed depth and 
+ocean temperature. The study focuses on the Scotian Shelf and adjacent Atlantic 
+waters, using commercial fisheries records aggregated across 2019–2023.
 
 ## Research Question
+How are reported Atlantic bluefin tuna catches distributed across the study area, 
+and how do those patterns correspond with bathymetry and the temperature field 
+used in this analysis?
 
-How are reported Atlantic bluefin tuna catches spatially distributed across
-Atlantic Canada, and how do these patterns correspond with bathymetry and
-mean sea surface temperature?
+Note: the fisheries records represent reported commercial landings, not tuna 
+abundance. Fishing effort is not available, and a reporting cell without a 
+reported catch should not be interpreted as having zero catch.
 
-Study Area: the Scotian Shelf and adjacent Atlantic waters,
-using commercial fisheries records aggregated across 2019-2023.
+## Data sources
 
-## Datasets
-- **DFO Fisheries Atlas (2019–2023):** Reported commercial bluefin tuna
-  landings aggregated into spatial reporting hexagons.
-- **GEBCO 2026:** Bathymetric data used to examine seabed depth and
-  proximity to the 200 m contour.
-- **Copernicus Marine GLORYS:** Monthly modeled ocean temperature
-  averaged across 2019–2023.
+The source datasets are retained under [`data/raw_data/`](data/raw_data/).
 
-## Methods
+- **Fisheries and Oceans Canada (DFO), Maritimes Fisheries Atlas (2019–2023):** Reported commercial bluefin tuna landings aggregated into spatial reporting cells. The geodatabase, atlas documentation, and data dictionaries are in [`data/raw_data/DFO_FisheriesAtlas/`](data/raw_data/DFO_FisheriesAtlas/).
+- **GEBCO 2026:** Bathymetric data used to derive seabed depth and the 200 m contour. The regional GeoTIFF is in [`data/raw_data/GEBCO/`](data/raw_data/GEBCO/); the folder also contains GEBCO documentation and terms of use.
+- **Copernicus Marine GLORYS12V1:** Monthly NetCDF data for 2019–2023. The workflow uses the `thetao` temperature variable to produce a five-year mean temperature raster. The source file is in [`data/raw_data/Copernicus/`](data/raw_data/Copernicus/).
+
+The environmental data cover around 68°W-55°W and 39°N-48°N. The exact product download links and access dates are not recorded in the project files; consult the included source documentation when citing or reusing the datasets.
+
+## Repository structure
+
+- `01_DataSetValidation.Rmd` — inspects the source datasets and their spatial and temporal properties.
+- `01_DatasetValidation.html` — rendered validation report.
+- `02_DFOFisheriesAtlas.R`–`08_Figure2_SpatialOceanography.R` — numbered R scripts for data preparation, processing, integration, analysis, and figure production.
+- `data/raw_data/` — original source datasets and supporting documentation.
+- `data/processed_data/` — derived bathymetry, temperature, and integrated fisheries-environment data.
+- `outputs/` — summary statistics and correlation tables.
+- `figures/` — final figure files.
+
+
+## Worklow and methods
 
 Spatial processing and analysis were conducted in R using `sf`, `terra`,
 `dplyr`, `tmap`, `ggplot2` and `dbscan`.
 
-The workflow involved:
+The numbered scripts follow this workflow:
 
-1. Validating the source datasets.
-2. Preparing reported bluefin tuna catch data.
-3. Processing bathymetry and five-year mean surface temperature.
-4. Extracting environmental conditions across fisheries reporting cells.
-5. Calculating descriptive statistics and Spearman correlations.
-6. Identifying spatial clusters of high-catch reporting cells using DBSCAN.
-7. Producing two final spatial figures.
+1. Validate the fisheries, bathymetry, and oceanographic source data.
+2. Prepare and inspect the DFO bluefin tuna catch data.
+3. Derive seabed depth and the 200 m bathymetric contour from GEBCO.
+4. Calculate a 2019-2023 mean from the Copernicus Marine temperature data.
+5. Extract environmental values for the fisheries reporting cells and calculate distance to the 200 m contour.
+6. Summarize reported catch and environmental variables, including Spearman rank correlations.
+7. Map regional catch patterns and high-catch clusters.
+8. Map catch patterns alongside the five-year mean temperature field.
 
 High-catch cells were defined using the 90th percentile of reported catch
 weight. DBSCAN clustering used a 30 km neighbourhood and a minimum of four
@@ -43,8 +57,7 @@ were selected for detailed mapping.
 
 ## Results
 
-The analysis identified pronounced spatial variation in reported commercial
-bluefin tuna catches.
+The analysis identified pronounced spatial variation in reported commercial catch:
 
 - Approximately 1.40 million kg of reported catch was distributed across
   2,163 reporting cells.
@@ -56,25 +69,31 @@ bluefin tuna catches.
   against local bathymetry.
 
 ## Final Figures
-Regional distribution of reported Atlantic bluefin tuna catches
-over GEBCO bathymetry.
 
-<img width="1366" height="1008" alt="Figure1A_RegionalBluefinTuna_CatchAndBathymetry" src="https://github.com/user-attachments/assets/b0d0c74e-a0cc-4ff2-80f8-b2e4dee4c428" />
-Figure 1A: Reported Catch Distribution and Bathymetry
+**Figure 1A. Reported catch distribution and bathymetry**  
+![Reported Atlantic bluefin tuna catch distribution over GEBCO bathymetry](figures/Figure1A_RegionalCatchBathymetry.png)
 
-<img width="1726" height="768" alt="Figure1BC_BluefinTuna_HotspotsAndBathymetry" src="https://github.com/user-attachments/assets/1ff0e2d4-9ffb-420e-8b3f-e3e8f53cc493" />
-Figure 1BC: The two highest-catch spatial clusters were selected using DBSCAN
-clustering of top-decile reporting cells.
+**Figures 1B–C. High-catch clusters and bathymetry**  
+The two highest-catch clusters were selected from top-decile reporting cells using DBSCAN.  
+![High-catch spatial clusters over bathymetry](figures/Figure1BC_HighCatchClusters.png)
 
-Reported bluefin tuna catches over five-year mean sea surface
-temperature (2019–2023), with labelled isotherms and subtle
-bathymetric shading.
-
-<img width="3600" height="2400" alt="Figure2_CatchTemperature" src="https://github.com/user-attachments/assets/959eb9c7-9cc5-4ba3-9200-160206c33578" />
-Figure 2: Catch Distribution and Surface Temperature
+**Figure 2. Catch distribution and temperature**  
+Reported catches over the 2019–2023 mean temperature field, with labelled isotherms and bathymetric shading.  
+![Reported catch distribution and mean temperature](figures/Figure2_CatchTemperatu
 
 ## Reproducibility
 
-The numbered R scripts document the workflow from dataset validation
-through spatial processing, statistical analysis and final figure production.
-Original datasets are preserved separately from processed outputs.
+Open `AtlanticBluefinTuna.Rproj` in RStudio so project-relative paths resolve from the repository root. Render the validation report, then run the numbered scripts in order in the same R session:
+
+```r
+rmarkdown::render("01_DataSetValidation.Rmd")
+source("02_DFOFisheriesAtlas.R")
+source("03_Bathymetry.R")
+source("04_Copernicus_OceanographicAnalysis.R")
+source("05_FisheriesEnvironmentalSpatialIntegration.R")
+source("06_BluefinTuna_EnvirAssociations.R")
+source("07_Figure1_SpatialVisualisations.R")
+source("08_Figure2_SpatialOceanography.R")
+```
+
+Scripts 03–08 write derived data, tables, and figures to `data/processed_data/`, `outputs/`, and `figures/`. The source datasets must be present in their documented locations under `data/raw_data/`.
