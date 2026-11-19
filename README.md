@@ -79,7 +79,7 @@ The two highest-catch clusters were selected from top-decile reporting cells usi
 
 **Figure 2. Catch distribution and temperature**  
 Reported catches over the 2019–2023 mean temperature field, with labelled isotherms and bathymetric shading.  
-![Reported catch distribution and mean temperature](figures/Figure2_CatchTemperatu
+![Reported catch distribution and mean temperature](figures/Figure2_CatchTemperature)
 
 ## Reproducibility
 
