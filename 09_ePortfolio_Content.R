@@ -2,13 +2,14 @@
 # Interactive versions of my Atlantic bluefin tuna maps
 
 # Load the packages needed for the maps
-library(sf)       # Work with spatial features
+library(sf)       # Work with spatial data
 library(terra)    # Work with bathymetry and temperature rasters
 library(dplyr)    # Filter and summarise catch data
 library(leaflet)  # Create interactive maps
 library(dbscan)   # Identify spatial clusters
-library(here)     # Use project-relative paths
+library(here)     # Use relative project paths
 library(scales)   # Format catch values
+library(htmlwidgets) # Adjust interactive map behaviour
 
 
 # Load the processed fisheries and environmental dataset
@@ -36,18 +37,18 @@ catch_projected <- sf::st_transform(
   3347
 )
 
-# Convert the catch data to geographic coordinates for Leaflet
-# EPSG:4326 uses longitude and latitude
+# Convert the catch polygons to geographic coordinates for Leaflet
 catch_data <- sf::st_transform(
   catch_data,
   4326
 )
-# Represent each reporting cell by its centroid
-# This follows the approach used in Figures 1 and 2
+
+# Represent reporting cells using their geometric centroids
+# Calculate centroids before converting to longitude and latitude
 catch_points <- sf::st_centroid(catch_projected) |>
   sf::st_transform(4326)
 
-# Use the same catch classes as the original figures
+# Use the same catch classes as Figures 1 and 2
 catch_breaks <- c(0, 10, 100, 1000, 10000, Inf)
 
 # Keep the original catch labels
@@ -59,7 +60,7 @@ catch_labels <- c(
   "10k+"
 )
 
-# Use the same YlOrRd colours as Scripts 07 and 08
+# Use the same YlOrRd palette as my original figures
 catch_colours <- grDevices::hcl.colors(
   5,
   "YlOrRd",
@@ -77,14 +78,14 @@ catch_points <- catch_points |>
     )
   )
 
-# Create the colour palette for the catch points
+# Create a colour palette for the catch points
 catch_palette <- leaflet::colorFactor(
   palette = catch_colours,
   domain = catch_labels,
   ordered = TRUE
 )
 
-# Prepare information shown when clicking a catch point
+# Prepare the information shown when clicking a catch location
 catch_points$popup_text <- paste0(
   "<b>Reporting hexagon:</b> ", catch_points$hexGridID,
   "<br><b>Reported catch:</b> ",
@@ -94,6 +95,86 @@ catch_points$popup_text <- paste0(
   "<br><b>Mean surface temperature:</b> ",
   round(catch_points$mean_surface_temperature_c, 2), " °C"
 )
+
+
+# Find the geographic extent of the catch locations
+catch_extent <- sf::st_bbox(catch_points)
+
+# Add some space around the catches for regional context
+# These values control how much surrounding ocean is visible
+regional_padding_lng <- 2.0
+regional_padding_lat <- 1.5
+
+# Create a regional extent around the reported catches
+regional_view <- c(
+  west = unname(catch_extent["xmin"]) - regional_padding_lng,
+  south = unname(catch_extent["ymin"]) - regional_padding_lat,
+  east = unname(catch_extent["xmax"]) + regional_padding_lng,
+  north = unname(catch_extent["ymax"]) + regional_padding_lat
+)
+
+
+# Create a function to control the map boundaries
+# This is useful when maps are embedded at different sizes
+limit_map_view <- function(map, bounds) {
+  
+  # Pass the geographic boundaries to JavaScript
+  map <- htmlwidgets::onRender(
+    map,
+    
+    # Use the supplied coordinates rather than undefined map options
+    sprintf(
+      "
+      function(el, x) {
+
+        var map = this;
+
+        var bounds = L.latLngBounds(
+          [%f, %f],
+          [%f, %f]
+        );
+
+        function updateView() {
+
+          // Work out the zoom needed to fill the map window
+          var minimumZoom = map.getBoundsZoom(bounds, true);
+
+          // Do not allow zooming out beyond this level
+          map.setMinZoom(minimumZoom);
+
+          // Restrict movement to the selected region
+          map.setMaxBounds(bounds);
+
+          // Centre the map on the selected area
+          map.setView(bounds.getCenter(), minimumZoom, {
+            animate: false
+          });
+
+          // Correct the map position if the embed size changes
+          map.panInsideBounds(bounds, {
+            animate: false
+          });
+
+        }
+
+        // Apply the view when the map is ready
+        map.whenReady(updateView);
+
+        // Update the view when Google Sites changes the map size
+        map.on('resize', updateView);
+
+      }
+      ",
+      bounds["south"],
+      bounds["west"],
+      bounds["north"],
+      bounds["east"]
+    )
+  )
+  
+  # Return the map with its boundaries applied
+  map
+}
 
 
 # Load the regional GEBCO bathymetry used in Figure 1A
@@ -106,22 +187,60 @@ regional_gebco <- terra::rast(
   )
 )
 
-# Convert negative seabed elevations to positive depths
+# Convert negative elevations to positive seabed depths
 regional_depth <- terra::ifel(
   regional_gebco < 0,
   -regional_gebco,
   NA
 )
 
-# Reduce the raster resolution for interactive display
-# This does not change the original bathymetry dataset
-regional_factor <- max(
-  1,
-  ceiling(sqrt(terra::ncell(regional_depth) / 150000))
+# Create a bounding box around the regional catch area
+# Remove coordinate names so sf recognises the four boundaries
+regional_view_polygon <- sf::st_as_sfc(
+  sf::st_bbox(
+    c(
+      xmin = unname(regional_view["west"]),
+      ymin = unname(regional_view["south"]),
+      xmax = unname(regional_view["east"]),
+      ymax = unname(regional_view["north"])
+    ),
+    crs = sf::st_crs(4326)
+  )
 )
 
-regional_depth_display <- terra::aggregate(
+# Transform the view to match the GEBCO raster
+regional_view_polygon <- sf::st_transform(
+  regional_view_polygon,
+  terra::crs(regional_depth)
+)
+
+# Get the extent needed for cropping the bathymetry
+regional_crop_extent <- terra::ext(
+  terra::vect(regional_view_polygon)
+)
+
+# Crop the bathymetry to the area surrounding the catches
+# This removes the unnecessary parts of the regional raster
+regional_depth_cropped <- terra::crop(
   regional_depth,
+  regional_crop_extent,
+  snap = "out"
+)
+
+# Reduce raster resolution for interactive display
+# The original scientific dataset is not changed
+regional_factor <- max(
+  1,
+  ceiling(
+    sqrt(
+      terra::ncell(regional_depth_cropped) / 150000
+    )
+  )
+)
+
+# Aggregate the display raster
+regional_depth_display <- terra::aggregate(
+  regional_depth_cropped,
   fact = regional_factor,
   fun = mean,
   na.rm = TRUE
@@ -134,7 +253,12 @@ regional_depth_display <- terra::project(
   method = "bilinear"
 )
 
-# Use the bathymetry colours from Figure 1A
+# Remove completely empty rows and columns
+regional_depth_display <- terra::trim(
+  regional_depth_display
+)
+
+# Use the same bathymetry colours as Figure 1A
 regional_depth_colours <- leaflet::colorNumeric(
   palette = grDevices::colorRampPalette(
     c(
@@ -150,40 +274,48 @@ regional_depth_colours <- leaflet::colorNumeric(
   na.color = "transparent"
 )
 
-# Get the geographic boundaries of the regional bathymetry
-bathymetry_extent <- terra::ext(regional_depth_display)
+# Get the actual extent of the displayed bathymetry
+bathymetry_extent <- terra::ext(
+  regional_depth_display
+)
 
-# Extract the western and eastern boundaries
+# Store the geographic boundaries
 map_west <- terra::xmin(bathymetry_extent)
 map_east <- terra::xmax(bathymetry_extent)
-
-# Extract the southern and northern boundaries
 map_south <- terra::ymin(bathymetry_extent)
 map_north <- terra::ymax(bathymetry_extent)
 
+# Store the boundaries for the interactive map
+regional_bounds <- c(
+  west = map_west,
+  south = map_south,
+  east = map_east,
+  north = map_north
+)
 
-# Create interactive Figure 1A
+
+# Create the interactive version of Figure 1A
 figure_1A_interactive <- leaflet::leaflet(
   options = leaflet::leafletOptions(
-    scrollWheelZoom = FALSE,  # Prevent accidental webpage zooming
-    maxZoom = 10,             # Limit excessive zooming in
-    maxBoundsViscosity = 1    # Restrict movement beyond the map extent
+    scrollWheelZoom = FALSE,
+    maxZoom = 10,
+    maxBoundsViscosity = 1
   )
 ) |>
   
-  # Add a simple OpenStreetMap basemap
+  # Add an OpenStreetMap basemap
   leaflet::addTiles() |>
   
-  # Add regional GEBCO bathymetry
+  # Add the regional seabed-depth raster
   leaflet::addRasterImage(
     regional_depth_display,
     colors = regional_depth_colours,
-    opacity = 0.85,
+    opacity = 0.95,
     project = FALSE,
     maxBytes = 20 * 1024 * 1024
   ) |>
   
-  # Add catch locations using the original classifications
+  # Add the reported catch locations
   leaflet::addCircleMarkers(
     data = catch_points,
     radius = 3,
@@ -195,7 +327,7 @@ figure_1A_interactive <- leaflet::leaflet(
     group = "Reported catches"
   ) |>
   
-  # Add the catch legend
+  # Add the catch-weight legend
   leaflet::addLegend(
     position = "bottomleft",
     colors = catch_colours,
@@ -210,7 +342,7 @@ figure_1A_interactive <- leaflet::leaflet(
     pal = regional_depth_colours,
     values = c(0, 5500),
     title = "Seabed depth (m)",
-    opacity = 0.85
+    opacity = 0.95
   ) |>
   
   # Allow visitors to turn catch locations on and off
@@ -224,69 +356,51 @@ figure_1A_interactive <- leaflet::leaflet(
   # Add a distance scale
   leaflet::addScaleBar(
     position = "bottomleft"
-  ) |>
-  
-  # Prevent panning beyond the bathymetry extent
-  leaflet::setMaxBounds(
-    lng1 = map_west,
-    lat1 = map_south,
-    lng2 = map_east,
-    lat2 = map_north
-  ) |>
-  
-  # Open the map at the full bathymetry extent
-  leaflet::fitBounds(
-    lng1 = map_west,
-    lat1 = map_south,
-    lng2 = map_east,
-    lat2 = map_north
   )
+
+# Apply the bathymetry boundaries to Figure 1A
+figure_1A_interactive <- limit_map_view(
+  figure_1A_interactive,
+  regional_bounds
+)
 
 # Preview Figure 1A without saving
 figure_1A_interactive
 
 
-# Identify high-catch cells using the 90th percentile
-# This follows the hotspot method used in Script 07
+# Identify the highest-catch 10% of reporting cells
+# This follows the method used in Script 07
 catch_threshold <- stats::quantile(
   catch_projected$roundWeight_kg,
   probs = 0.90,
   na.rm = TRUE
 )
 
-# Keep reporting cells meeting the high-catch threshold
+# Keep cells meeting the high-catch threshold
 top_decile_cells <- catch_projected |>
   dplyr::filter(
     roundWeight_kg >= catch_threshold
   )
 
-# Calculate centroids in the original projected CRS
+# Calculate centroids in EPSG:3347
 top_decile_centroids <- sf::st_centroid(
   top_decile_cells
 )
 
-# Extract centroid coordinates for DBSCAN
+# Extract projected coordinates for DBSCAN
 cluster_coordinates <- sf::st_coordinates(
   top_decile_centroids
 )
 
-# Check that the projected coordinates use metres
-# DBSCAN uses 30000 metres as its neighbourhood distance
-crs_units <- sf::st_crs(top_decile_cells)$units_gdal
-
-if (is.na(crs_units) ||
-    !crs_units %in% c("metre", "meter", "metres", "meters")) {
-  stop("The projected catch CRS must use metres.")
-}
-
-# Group nearby high-catch cells using the original DBSCAN settings
+# Group nearby high-catch cells using the original settings
+# A 30 km neighbourhood and at least four cells are required
 cluster_result <- dbscan::dbscan(
   cluster_coordinates,
-  eps = 30000,  # Maximum neighbourhood distance of 30 km
-  minPts = 4    # Minimum four cells needed for a cluster
+  eps = 30000,
+  minPts = 4
 )
 
-# Add the DBSCAN cluster number to each reporting cell
+# Add the cluster number to each high-catch cell
 top_decile_cells$hotspot_cluster <- cluster_result$cluster
 
 # Remove isolated high-catch cells classified as noise
@@ -295,7 +409,7 @@ clustered_cells <- top_decile_cells |>
     hotspot_cluster > 0
   )
 
-# Summarise reported catch within each cluster
+# Summarise the total reported catch within each cluster
 cluster_summary <- clustered_cells |>
   sf::st_drop_geometry() |>
   dplyr::group_by(hotspot_cluster) |>
@@ -326,13 +440,8 @@ print(
     )
 )
 
-# Convert clustered cells to geographic coordinates for mapping
-clustered_cells_map <- sf::st_transform(
-  clustered_cells,
-  4326
-)
 
-# Load the processed seabed-depth raster
+# Load the detailed seabed-depth raster
 hotspot_depth <- terra::rast(
   here::here(
     "data",
@@ -342,27 +451,7 @@ hotspot_depth <- terra::rast(
   )
 )
 
-# Reduce raster resolution for interactive display
-hotspot_factor <- max(
-  1,
-  ceiling(sqrt(terra::ncell(hotspot_depth) / 150000))
-)
-
-hotspot_depth_display <- terra::aggregate(
-  hotspot_depth,
-  fact = hotspot_factor,
-  fun = mean,
-  na.rm = TRUE
-)
-
-# Convert the bathymetry raster to geographic coordinates
-hotspot_depth_display <- terra::project(
-  hotspot_depth_display,
-  "EPSG:4326",
-  method = "bilinear"
-)
-
-# Use the bathymetry colours from Figures 1B and 1C
+# Use the original hotspot bathymetry colours
 hotspot_depth_colours <- leaflet::colorNumeric(
   palette = grDevices::colorRampPalette(
     c(
@@ -378,24 +467,21 @@ hotspot_depth_colours <- leaflet::colorNumeric(
 )
 
 
-# Create a function so Figures 1B and 1C use the same design
+# Create a function for the two hotspot maps
 create_hotspot_map <- function(cluster_number) {
   
   # Select the reporting cells belonging to this cluster
-  selected_cells <- clustered_cells_map |>
+  selected_cells <- clustered_cells |>
     dplyr::filter(
       hotspot_cluster == cluster_number
     )
   
-  # Get the cluster extent in the original projected CRS
-  selected_projected <- sf::st_transform(
-    selected_cells,
-    sf::st_crs(catch_projected)
+  # Find the projected extent of the selected cluster
+  cluster_bbox <- sf::st_bbox(
+    selected_cells
   )
   
-  # Find the centre and dimensions of the cluster
-  cluster_bbox <- sf::st_bbox(selected_projected)
-  
+  # Calculate the centre of the cluster
   cluster_centre_x <- mean(
     c(cluster_bbox["xmin"], cluster_bbox["xmax"])
   )
@@ -404,13 +490,17 @@ create_hotspot_map <- function(cluster_number) {
     c(cluster_bbox["ymin"], cluster_bbox["ymax"])
   )
   
+  # Calculate the width and height of the cluster
   cluster_width <- cluster_bbox["xmax"] - cluster_bbox["xmin"]
   cluster_height <- cluster_bbox["ymax"] - cluster_bbox["ymin"]
   
   # Add the same 50 km buffer used in Script 07
-  half_width <- max(cluster_width, cluster_height) / 2 + 50000
+  half_width <- max(
+    cluster_width,
+    cluster_height
+  ) / 2 + 50000
   
-  # Create a square extent around the selected cluster
+  # Create a square extent around the cluster
   inset_bbox <- sf::st_bbox(
     c(
       xmin = unname(cluster_centre_x - half_width),
@@ -418,27 +508,109 @@ create_hotspot_map <- function(cluster_number) {
       xmax = unname(cluster_centre_x + half_width),
       ymax = unname(cluster_centre_y + half_width)
     ),
-    crs = sf::st_crs(selected_projected)
+    crs = sf::st_crs(selected_cells)
   )
   
-  # Convert the inset extent to geographic coordinates
-  inset_geographic <- inset_bbox |>
-    sf::st_as_sfc() |>
-    sf::st_transform(4326) |>
-    sf::st_bbox()
+  # Convert the inset extent to a spatial polygon
+  inset_polygon <- sf::st_as_sfc(
+    inset_bbox
+  )
   
-  # Show all reported catches within the inset
-  # This matches the original Figure 1B/C approach
-  inset_catches <- sf::st_crop(
-    catch_points,
+  # Convert the inset polygon to geographic coordinates
+  inset_geographic <- sf::st_transform(
+    inset_polygon,
+    4326
+  )
+  
+  # Get the geographic boundaries for Leaflet
+  inset_extent <- sf::st_bbox(
     inset_geographic
   )
   
-  # Create popup information for the inset catch locations
+  # Store the boundaries for the interactive map
+  inset_bounds <- c(
+    west = unname(inset_extent["xmin"]),
+    south = unname(inset_extent["ymin"]),
+    east = unname(inset_extent["xmax"]),
+    north = unname(inset_extent["ymax"])
+  )
+  
+  # Select all reported catches within the inset
+  # This follows the original Figure 1B/C maps
+  inset_catches <- sf::st_crop(
+    catch_projected,
+    inset_bbox
+  )
+  
+  # Calculate the catch centroids
+  inset_catches <- sf::st_centroid(
+    inset_catches
+  )
+  
+  # Convert catch locations to geographic coordinates
+  inset_catches <- sf::st_transform(
+    inset_catches,
+    4326
+  )
+  
+  # Assign catch classes using the original breaks
+  inset_catches <- inset_catches |>
+    dplyr::mutate(
+      catch_class = cut(
+        roundWeight_kg,
+        breaks = catch_breaks,
+        labels = catch_labels,
+        include.lowest = TRUE
+      )
+    )
+  
+  # Create popup information for each catch location
   inset_catches$popup_text <- paste0(
-    "<b>Reporting hexagon:</b> ", inset_catches$hexGridID,
+    "<b>Reporting hexagon:</b> ",
+    inset_catches$hexGridID,
     "<br><b>Reported catch:</b> ",
-    scales::comma(inset_catches$roundWeight_kg), " kg"
+    scales::comma(inset_catches$roundWeight_kg),
+    " kg"
+  )
+  
+  # Convert the inset extent to the bathymetry raster CRS
+  raster_crop_polygon <- sf::st_transform(
+    inset_polygon,
+    terra::crs(hotspot_depth)
+  )
+  
+  # Crop the bathymetry to the selected hotspot area
+  inset_depth <- terra::crop(
+    hotspot_depth,
+    terra::ext(
+      terra::vect(raster_crop_polygon)
+    ),
+    snap = "out"
+  )
+  
+  # Reduce raster resolution for interactive display
+  inset_factor <- max(
+    1,
+    ceiling(
+      sqrt(
+        terra::ncell(inset_depth) / 100000
+      )
+    )
+  )
+  
+  # Aggregate the display raster
+  inset_depth <- terra::aggregate(
+    inset_depth,
+    fact = inset_factor,
+    fun = mean,
+    na.rm = TRUE
+  )
+  
+  # Convert the raster to geographic coordinates
+  inset_depth <- terra::project(
+    inset_depth,
+    "EPSG:4326",
+    method = "bilinear"
   )
   
   # Create the interactive hotspot map
@@ -450,19 +622,19 @@ create_hotspot_map <- function(cluster_number) {
     )
   ) |>
     
-    # Add the OpenStreetMap basemap
+    # Add an OpenStreetMap basemap
     leaflet::addTiles() |>
     
     # Add the detailed seabed-depth raster
     leaflet::addRasterImage(
-      hotspot_depth_display,
+      inset_depth,
       colors = hotspot_depth_colours,
-      opacity = 0.85,
+      opacity = 0.95,
       project = FALSE,
       maxBytes = 20 * 1024 * 1024
     ) |>
     
-    # Add all reported catches within the inset extent
+    # Add all reported catches within the hotspot extent
     leaflet::addCircleMarkers(
       data = inset_catches,
       radius = 4,
@@ -474,7 +646,7 @@ create_hotspot_map <- function(cluster_number) {
       group = "Reported catches"
     ) |>
     
-    # Add the original catch legend
+    # Add the original catch-weight legend
     leaflet::addLegend(
       position = "bottomleft",
       colors = catch_colours,
@@ -489,7 +661,7 @@ create_hotspot_map <- function(cluster_number) {
       pal = hotspot_depth_colours,
       values = c(0, 400),
       title = "Seabed depth (m)",
-      opacity = 0.85
+      opacity = 0.95
     ) |>
     
     # Allow visitors to toggle catch locations
@@ -503,25 +675,15 @@ create_hotspot_map <- function(cluster_number) {
     # Add a distance scale
     leaflet::addScaleBar(
       position = "bottomleft"
-    ) |>
-    
-    # Keep the map within the regional bathymetry boundaries
-    leaflet::setMaxBounds(
-      lng1 = map_west,
-      lat1 = map_south,
-      lng2 = map_east,
-      lat2 = map_north
-    ) |>
-    
-    # Start closer to the centre of the bathymetry raster
-    # A fixed zoom avoids fitting the full raster into the Viewer
-    leaflet::setView(
-      lng = mean(c(map_west, map_east)),
-      lat = mean(c(map_south, map_north)),
-      zoom = 5
     )
   
-  # Return the finished interactive map
+  # Apply the selected hotspot boundaries
+  hotspot_map <- limit_map_view(
+    hotspot_map,
+    inset_bounds
+  )
+  
+  # Return the interactive hotspot map
   hotspot_map
 }
 
@@ -553,36 +715,90 @@ temperature_raster <- terra::rast(
   )
 )
 
+# Get the geographic extent of the temperature raster
+temperature_raster_geographic <- terra::project(
+  temperature_raster,
+  "EPSG:4326",
+  method = "bilinear"
+)
+
+# Get the raster boundaries
+temperature_extent <- terra::ext(
+  temperature_raster_geographic
+)
+
+# Keep the map within the available temperature data
+temperature_bounds <- c(
+  west = max(
+    regional_view["west"],
+    terra::xmin(temperature_extent)
+  ),
+  south = max(
+    regional_view["south"],
+    terra::ymin(temperature_extent)
+  ),
+  east = min(
+    regional_view["east"],
+    terra::xmax(temperature_extent)
+  ),
+  north = min(
+    regional_view["north"],
+    terra::ymax(temperature_extent)
+  )
+)
+
+# Check that the selected area overlaps the temperature raster
+if (
+  temperature_bounds["west"] >= temperature_bounds["east"] ||
+  temperature_bounds["south"] >= temperature_bounds["north"]
+) {
+  stop("The selected map extent does not overlap the temperature raster.")
+}
+
+# Crop the temperature raster to the selected study area
+temperature_display <- terra::crop(
+  temperature_raster_geographic,
+  terra::ext(
+    temperature_bounds["west"],
+    temperature_bounds["east"],
+    temperature_bounds["south"],
+    temperature_bounds["north"]
+  )
+)
+
 # Reduce raster resolution for interactive display
 temperature_factor <- max(
   1,
-  ceiling(sqrt(terra::ncell(temperature_raster) / 150000))
+  ceiling(
+    sqrt(
+      terra::ncell(temperature_display) / 150000
+    )
+  )
 )
 
+# Aggregate the temperature raster for display
 temperature_display <- terra::aggregate(
-  temperature_raster,
+  temperature_display,
   fact = temperature_factor,
   fun = mean,
   na.rm = TRUE
 )
 
-# Convert the display raster to geographic coordinates
-temperature_display <- terra::project(
-  temperature_display,
-  "EPSG:4326",
-  method = "bilinear"
+# Remove completely empty rows and columns
+temperature_display <- terra::trim(
+  temperature_display
 )
 
-# Find the actual temperature range
+# Find the minimum and maximum temperature
 temperature_range <- as.numeric(
   terra::global(
     temperature_display,
-    range,
+    c("min", "max"),
     na.rm = TRUE
   )[1, ]
 )
 
-# Use the temperature colours from Figure 2
+# Use the same temperature colours as Figure 2
 temperature_colours <- leaflet::colorNumeric(
   palette = c(
     "#253494",
@@ -597,8 +813,19 @@ temperature_colours <- leaflet::colorNumeric(
   na.color = "transparent"
 )
 
-# Get the geographic extent of the temperature raster
-temperature_extent <- terra::ext(temperature_display)
+# Get the final displayed temperature extent
+temperature_extent <- terra::ext(
+  temperature_display
+)
+
+# Store the map boundaries
+temperature_bounds <- c(
+  west = terra::xmin(temperature_extent),
+  south = terra::ymin(temperature_extent),
+  east = terra::xmax(temperature_extent),
+  north = terra::ymax(temperature_extent)
+)
+
 
 # Create the interactive version of Figure 2
 figure_2_interactive <- leaflet::leaflet(
@@ -609,14 +836,14 @@ figure_2_interactive <- leaflet::leaflet(
   )
 ) |>
   
-  # Add the OpenStreetMap basemap
+  # Add an OpenStreetMap basemap
   leaflet::addTiles() |>
   
   # Add the five-year mean sea-surface temperature
   leaflet::addRasterImage(
     temperature_display,
     colors = temperature_colours,
-    opacity = 0.9,
+    opacity = 0.95,
     project = FALSE,
     maxBytes = 20 * 1024 * 1024
   ) |>
@@ -633,7 +860,7 @@ figure_2_interactive <- leaflet::leaflet(
     group = "Reported catches"
   ) |>
   
-  # Add the catch legend
+  # Add the catch-weight legend
   leaflet::addLegend(
     position = "bottomleft",
     colors = catch_colours,
@@ -648,7 +875,7 @@ figure_2_interactive <- leaflet::leaflet(
     pal = temperature_colours,
     values = temperature_range,
     title = "Mean surface temperature (°C)",
-    opacity = 0.9
+    opacity = 0.95
   ) |>
   
   # Allow visitors to turn catch locations on and off
@@ -662,23 +889,13 @@ figure_2_interactive <- leaflet::leaflet(
   # Add a distance scale
   leaflet::addScaleBar(
     position = "bottomleft"
-  ) |>
-  
-  # Restrict panning to the temperature raster extent
-  leaflet::setMaxBounds(
-    lng1 = terra::xmin(temperature_extent),
-    lat1 = terra::ymin(temperature_extent),
-    lng2 = terra::xmax(temperature_extent),
-    lat2 = terra::ymax(temperature_extent)
-  ) |>
-  
-  # Start the map at the temperature raster extent
-  leaflet::fitBounds(
-    lng1 = terra::xmin(temperature_extent),
-    lat1 = terra::ymin(temperature_extent),
-    lng2 = terra::xmax(temperature_extent),
-    lat2 = terra::ymax(temperature_extent)
   )
+
+# Apply the temperature map boundaries
+figure_2_interactive <- limit_map_view(
+  figure_2_interactive,
+  temperature_bounds
+)
 
 # Preview Figure 2 without saving
 figure_2_interactive
