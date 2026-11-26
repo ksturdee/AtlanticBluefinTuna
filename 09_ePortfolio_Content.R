@@ -114,65 +114,78 @@ regional_view <- c(
 )
 
 
-# Create a function to control the map boundaries
-# This is useful when maps are embedded at different sizes
+# Control the starting extent and zoom boundaries
+# Visitors can zoom in but cannot zoom out beyond the study area
 limit_map_view <- function(map, bounds) {
   
-  # Pass the geographic boundaries to JavaScript
+  # Add the map boundaries using JavaScript
   map <- htmlwidgets::onRender(
     map,
     
-    # Use the supplied coordinates rather than undefined map options
     sprintf(
       "
       function(el, x) {
 
         var map = this;
 
+        // Define the geographic boundaries of the map
         var bounds = L.latLngBounds(
           [%f, %f],
           [%f, %f]
         );
 
-        function updateView() {
+        // Calculate the minimum zoom for this map window
+        var minimumZoom = map.getBoundsZoom(bounds, true);
 
-          // Work out the zoom needed to fill the map window
-          var minimumZoom = map.getBoundsZoom(bounds, true);
+        // Allow visitors to zoom in further
+        var maximumZoom = 12;
 
-          // Do not allow zooming out beyond this level
-          map.setMinZoom(minimumZoom);
+        // Keep the minimum zoom below the maximum
+        minimumZoom = Math.min(minimumZoom, maximumZoom - 1);
 
-          // Restrict movement to the selected region
-          map.setMaxBounds(bounds);
+        // Apply the zoom limits
+        map.setMinZoom(minimumZoom);
+        map.setMaxZoom(maximumZoom);
 
-          // Centre the map on the selected area
-          map.setView(bounds.getCenter(), minimumZoom, {
-            animate: false
-          });
+        // Restrict panning to the selected study area
+        map.setMaxBounds(bounds);
 
-          // Correct the map position if the embed size changes
-          map.panInsideBounds(bounds, {
-            animate: false
-          });
+        // Set the starting view
+        map.setView(
+          bounds.getCenter(),
+          minimumZoom,
+          {animate: false}
+        );
 
-        }
+        // Allow mouse-wheel zooming
+        map.scrollWheelZoom.enable();
 
-        // Apply the view when the map is ready
-        map.whenReady(updateView);
+        // Recalculate the minimum zoom if the display changes size
+        map.on('resize', function() {
 
-        // Update the view when Google Sites changes the map size
-        map.on('resize', updateView);
+          var newMinimum = map.getBoundsZoom(bounds, true);
+
+          newMinimum = Math.min(newMinimum, maximumZoom - 1);
+
+          map.setMinZoom(newMinimum);
+
+          // Keep the current zoom unless it is below the new minimum
+          if (map.getZoom() < newMinimum) {
+            map.setZoom(newMinimum);
+          }
+
+        });
 
       }
       ",
-      bounds["south"],
-      bounds["west"],
-      bounds["north"],
-      bounds["east"]
+      unname(bounds["south"]),
+      unname(bounds["west"]),
+      unname(bounds["north"]),
+      unname(bounds["east"])
     )
   )
   
-  # Return the map with its boundaries applied
+  # Return the interactive map
   map
 }
 
