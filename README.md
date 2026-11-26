@@ -2,7 +2,7 @@
 In this project, I explore the spatial distribution of reported Atlantic bluefin 
 tuna catches in Atlantic Canada and their associations with seabed depth and 
 ocean temperature. The study focuses on the Scotian Shelf and adjacent Atlantic 
-waters, using commercial fisheries records aggregated across 2019–2023.
+waters, using commercial fisheries records aggregated across 2019 to 2023.
 
 ## Research Question
 How are reported Atlantic bluefin tuna catches distributed across the study area, 
